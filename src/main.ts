@@ -15,17 +15,21 @@ import { representativePlaces, type Place } from "./data/places.js";
 type SeasonKey = "spring" | "summer" | "autumn" | "winter";
 type Slot = "primary" | "compare";
 
-const seasonPresets: Record<SeasonKey, { label: string; shortLabel: string; dateIso: string }> = {
-  spring: { label: "春分", shortLabel: "春", dateIso: "2026-03-20" },
-  summer: { label: "夏至", shortLabel: "夏", dateIso: "2026-06-21" },
-  autumn: { label: "秋分", shortLabel: "秋", dateIso: "2026-09-23" },
-  winter: { label: "冬至", shortLabel: "冬", dateIso: "2026-12-22" },
+const seasonPresets: Record<SeasonKey, { label: string; dateIso: string }> = {
+  spring: { label: "春分", dateIso: "2026-03-20" },
+  summer: { label: "夏至", dateIso: "2026-06-21" },
+  autumn: { label: "秋分", dateIso: "2026-09-23" },
+  winter: { label: "冬至", dateIso: "2026-12-22" },
 };
+
+const playbackRates = [0.5, 1, 2, 4] as const;
 
 const state = {
   season: "summer" as SeasonKey,
   minutes: 300,
   playing: false,
+  playbackRate: 1,
+  loopPlayback: true,
   activeSlot: "primary" as Slot,
   primaryPlaceId: "beijing",
   comparePlaceId: "urumqi",
@@ -113,7 +117,7 @@ function render(): void {
   const compare = getCurrentPlace("compare");
   const selectedPrimary = snapshotFor(primary, season.dateIso, instant);
   const selectedCompare = snapshotFor(compare, season.dateIso, instant);
-  const summary = buildSampleSummary(season.dateIso);
+  const summary = buildSampleSummary(state.season, season.dateIso);
 
   app.innerHTML = `
     <div class="shell">
@@ -123,18 +127,13 @@ function render(): void {
           <h1>晨光中国</h1>
           <p>同一北京时间下的中国黎明时空动态地图</p>
         </div>
-        <div class="time-dashboard" aria-label="当前时空状态">
-          <div>
-            <span>节气</span>
-            <strong>${season.label}</strong>
-          </div>
-          <div>
-            <span>北京时间</span>
+        <div class="topbar-meta">
+          <div class="status-line" aria-label="当前时空状态">
+            <span>${season.label}</span>
             <strong>${formatBeijingDateTime(instant)}</strong>
           </div>
-          <div>
-            <span>样本日出跨度</span>
-            <strong>${summary.spreadText}</strong>
+          <div class="season-strip" role="tablist" aria-label="节气切换">
+            ${renderSeasonButtons()}
           </div>
         </div>
       </header>
@@ -142,73 +141,42 @@ function render(): void {
       <main class="workspace">
         <section class="map-panel" aria-label="全国晨光地图">
           <div class="map-stage">
-            <div class="map-annotation">
-              <span>全国太阳高度场</span>
-              <strong>${stageStyles[selectedPrimary.stage].label}</strong>
+            <div class="map-badge">
+              <span>显示方式</span>
+              <strong>天光阶段</strong>
             </div>
             ${renderMap(instant)}
           </div>
-          <div class="map-footer">
-            <div class="footer-item">
-              <span class="footer-kicker">最早日出</span>
-              <strong>${summary.earliestText}</strong>
-            </div>
-            <div class="footer-item">
-              <span class="footer-kicker">最晚日出</span>
-              <strong>${summary.latestText}</strong>
-            </div>
-            <div class="footer-item footer-item--wide">
-              <span class="footer-kicker">当前观察</span>
-              <strong>${selectedPrimary.name} 与 ${selectedCompare.name} 的理论日出相差 ${formatAbsDelta(
-                minuteDelta(selectedPrimary.events.sunrise, selectedCompare.events.sunrise),
-              )}</strong>
-            </div>
+          <div class="map-story" aria-live="polite">
+            ${summary.narrativeText}
           </div>
         </section>
 
         <aside class="inspector" aria-label="地图控制与地点读数">
-          <section class="control-panel">
+          <section class="insight-panel">
             <div class="panel-heading">
-              <span>时间控制</span>
-              <strong>${formatMinutes(state.minutes)}</strong>
+              <span>地点对比</span>
+              <strong>${selectedPrimary.name} ⇄ ${selectedCompare.name}</strong>
             </div>
-            <div class="season-row" role="tablist" aria-label="节气切换">
-              ${renderSeasonButtons()}
-            </div>
-            <label class="time-row">
-              <span>北京时间轴</span>
-              <input
-                id="time-slider"
-                class="time-slider"
-                type="range"
-                min="180"
-                max="600"
-                step="1"
-                value="${state.minutes}"
-                aria-label="北京时间轴"
-              />
-            </label>
-            <div class="time-scale">
-              <span>03:00</span>
-              <span>06:00</span>
-              <span>10:00</span>
-            </div>
-            <div class="toolbar">
-              <button id="play-toggle" class="action-button" type="button">
-                ${state.playing ? "暂停" : "播放"}
-              </button>
-              <button id="slot-toggle" class="action-button action-button--secondary" type="button">
-                点击写入：${state.activeSlot === "primary" ? "主地点" : "对比地点"}
-              </button>
-            </div>
-          </section>
 
-          <section class="control-panel">
-            <div class="panel-heading">
-              <span>地点比较</span>
-              <strong>${selectedPrimary.name} / ${selectedCompare.name}</strong>
+            <div class="slot-strip" role="tablist" aria-label="点击写入目标">
+              <button
+                class="slot-button ${state.activeSlot === "primary" ? "slot-button--active" : ""}"
+                type="button"
+                data-slot="primary"
+              >
+                主地点
+              </button>
+              <button
+                class="slot-button ${state.activeSlot === "compare" ? "slot-button--active" : ""}"
+                type="button"
+                data-slot="compare"
+              >
+                对比地点
+              </button>
             </div>
-            <div class="select-grid">
+
+            <div class="compare-switches">
               <label class="field">
                 <span>主地点</span>
                 <select id="primary-select">
@@ -222,37 +190,75 @@ function render(): void {
                 </select>
               </label>
             </div>
-            <div class="place-cards">
+
+            <div class="pair-grid">
               ${renderSnapshotCard(selectedPrimary, "primary")}
               ${renderSnapshotCard(selectedCompare, "compare")}
             </div>
-            ${renderComparisonStrip(selectedPrimary, selectedCompare)}
-          </section>
 
-          <section class="control-panel control-panel--legend">
-            <div class="panel-heading">
-              <span>晨光阶段</span>
-              <strong>太阳高度角</strong>
+            <div class="delta-hero">
+              <span>理论日出相差</span>
+              <strong>${formatAbsDelta(
+                minuteDelta(selectedPrimary.events.sunrise, selectedCompare.events.sunrise),
+              )}</strong>
             </div>
-            <div class="legend">
-              ${Object.entries(stageStyles)
-                .map(
-                  ([stageKey, style]) => `
-                    <div class="legend-row">
-                      <span class="legend-swatch" style="background:${style.color}"></span>
-                      <span>${style.label}</span>
-                      <span>${style.range}</span>
-                    </div>
-                  `,
-                )
-                .join("")}
-            </div>
-            <p class="model-note">
-              当前为理论天文日出模型：北京时间、WGS84 坐标、太阳中心高度约 -0.833°。正式参赛版需替换为自然资源主管部门标准地图并保留审图号。
-            </p>
+
+            <details class="parameter-drawer">
+              <summary>查看完整太阳参数</summary>
+              <div class="parameter-sheet">
+                ${renderComparisonStrip(selectedPrimary, selectedCompare)}
+                <div class="legend legend--compact">
+                  ${Object.entries(stageStyles)
+                    .map(
+                      ([stageKey, style]) => `
+                        <div class="legend-row">
+                          <span class="legend-swatch" style="background:${style.color}"></span>
+                          <span>${style.label}</span>
+                          <span>${style.range}</span>
+                        </div>
+                      `,
+                    )
+                    .join("")}
+                </div>
+                <p class="model-note">
+                  当前为理论天文日出模型：北京时间、WGS84 坐标、太阳中心高度约 -0.833°。正式参赛版需替换为自然资源主管部门标准地图并保留审图号。
+                </p>
+              </div>
+            </details>
           </section>
         </aside>
       </main>
+
+      <footer class="timeline-rail" aria-label="时间轴控制">
+        <button id="play-toggle" class="action-button action-button--play" type="button">
+          ${state.playing ? "⏸" : "▶"}
+        </button>
+        <div class="timeline-track">
+          <span class="timeline-time">03:00</span>
+          <input
+            id="time-slider"
+            class="time-slider"
+            type="range"
+            min="180"
+            max="600"
+            step="1"
+            value="${state.minutes}"
+            aria-label="北京时间轴"
+          />
+          <span class="timeline-time">10:00</span>
+        </div>
+        <div class="timeline-tools">
+          <button id="rate-toggle" class="tool-chip" type="button">${state.playbackRate}×</button>
+          <button
+            id="loop-toggle"
+            class="tool-chip ${state.loopPlayback ? "tool-chip--active" : ""}"
+            type="button"
+          >
+            循环
+          </button>
+          <span class="timeline-clock">${formatMinutes(state.minutes)}</span>
+        </div>
+      </footer>
     </div>
   `;
 
@@ -302,14 +308,11 @@ function renderMap(instant: Date): string {
           <stop offset="54%" stop-color="rgba(255,255,255,0.04)"></stop>
           <stop offset="100%" stop-color="rgba(0,0,0,0.16)"></stop>
         </linearGradient>
-        <filter id="soft-shadow" x="-12%" y="-12%" width="124%" height="124%">
-          <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#020608" flood-opacity="0.38"></feDropShadow>
-        </filter>
       </defs>
 
       <rect class="canvas-bg" x="0" y="0" width="${viewBox.width}" height="${viewBox.height}"></rect>
       ${renderGraticule()}
-      <g class="china-land" mask="url(#china-mask)" filter="url(#soft-shadow)">
+      <g class="china-land" mask="url(#china-mask)">
         <rect x="0" y="0" width="${viewBox.width}" height="${viewBox.height}" class="land-base"></rect>
         ${renderReliefTexture()}
         ${grid}
@@ -318,7 +321,7 @@ function renderMap(instant: Date): string {
       <g class="boundary-layer">
         ${provinceOutlines}
       </g>
-      ${renderPlaceMarkers(instant)}
+      ${renderCoreMarkers(instant)}
       ${renderSouthChinaSeaInset()}
     </svg>
   `;
@@ -389,23 +392,17 @@ function renderReliefTexture(): string {
   `;
 }
 
-function renderPlaceMarkers(instant: Date): string {
-  const markers = representativePlaces
-    .map((place) => {
+function renderCoreMarkers(instant: Date): string {
+  const markers = [getCurrentPlace("primary"), getCurrentPlace("compare")]
+    .map((place, index) => {
       const point = project(place);
       const stage = classifyMorningLight(
         getSolarHorizontalPosition(instant, place).geometricAltitudeDeg,
       );
-      const isPrimary = place.id === state.primaryPlaceId;
-      const isCompare = place.id === state.comparePlaceId;
       const markerClass = [
         "marker",
-        isPrimary ? "marker--primary" : "",
-        isCompare ? "marker--compare" : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-      const label = isPrimary || isCompare ? `<text x="8" y="-7">${place.name}</text>` : "";
+        index === 0 ? "marker--primary" : "marker--compare",
+      ].join(" ");
       return `
         <g
           class="${markerClass}"
@@ -414,8 +411,8 @@ function renderPlaceMarkers(instant: Date): string {
         >
           <title>${place.name}：${stageStyles[stage].label}</title>
           <circle class="marker-hit" r="10"></circle>
-          <circle class="marker-core" r="${isPrimary || isCompare ? 3.8 : 2.4}"></circle>
-          ${label}
+          <circle class="marker-core" r="4"></circle>
+          <text x="8" y="-7">${place.name}</text>
         </g>
       `;
     })
@@ -449,7 +446,7 @@ function renderSeasonButtons(): string {
           data-season="${key}"
           aria-pressed="${state.season === key}"
         >
-          <span>${season.shortLabel}</span>${season.label}
+          ${season.label}
         </button>
       `,
     )
@@ -510,10 +507,14 @@ function renderComparisonStrip(primary: Snapshot, compare: Snapshot): string {
   `;
 }
 
-function buildSampleSummary(dateIso: string): {
+function buildSampleSummary(
+  seasonKey: SeasonKey,
+  dateIso: string,
+): {
   earliestText: string;
   latestText: string;
   spreadText: string;
+  narrativeText: string;
 } {
   const sunrises = representativePlaces
     .map((place) => {
@@ -530,13 +531,19 @@ function buildSampleSummary(dateIso: string): {
       earliestText: "无",
       latestText: "无",
       spreadText: "无",
+      narrativeText: `${seasonPresets[seasonKey].label}日，全国晨光差异暂不可用。`,
     };
   }
+
+  const spreadText = formatDuration(latest.sunrise.valueOf() - earliest.sunrise.valueOf());
 
   return {
     earliestText: `${earliest.place.name} ${clockOnly.format(earliest.sunrise)}`,
     latestText: `${latest.place.name} ${clockOnly.format(latest.sunrise)}`,
-    spreadText: formatDuration(latest.sunrise.valueOf() - earliest.sunrise.valueOf()),
+    spreadText,
+    narrativeText: `${seasonPresets[seasonKey].label}日，全国最早日出位于${earliest.place.name} ${clockOnly.format(
+      earliest.sunrise,
+    )}，最晚日出位于${latest.place.name} ${clockOnly.format(latest.sunrise)}，相差 ${spreadText}。`,
   };
 }
 
@@ -564,12 +571,21 @@ interface Snapshot extends Place {
 }
 
 function bindInteractions(): void {
-  const seasonButtons = document.querySelectorAll<HTMLButtonElement>("[data-season]");
-  seasonButtons.forEach((button) => {
+  document.querySelectorAll<HTMLButtonElement>("[data-season]").forEach((button) => {
     button.addEventListener("click", () => {
       const season = button.dataset.season as SeasonKey | undefined;
       if (season) {
         state.season = season;
+        render();
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-slot]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const slot = button.dataset.slot as Slot | undefined;
+      if (slot) {
+        state.activeSlot = slot;
         render();
       }
     });
@@ -592,9 +608,16 @@ function bindInteractions(): void {
     render();
   });
 
-  const slotButton = document.querySelector<HTMLButtonElement>("#slot-toggle");
-  slotButton?.addEventListener("click", () => {
-    state.activeSlot = state.activeSlot === "primary" ? "compare" : "primary";
+  const rateButton = document.querySelector<HTMLButtonElement>("#rate-toggle");
+  rateButton?.addEventListener("click", () => {
+    const currentIndex = playbackRates.indexOf(state.playbackRate as (typeof playbackRates)[number]);
+    state.playbackRate = playbackRates[(currentIndex + 1) % playbackRates.length]!;
+    render();
+  });
+
+  const loopButton = document.querySelector<HTMLButtonElement>("#loop-toggle");
+  loopButton?.addEventListener("click", () => {
+    state.loopPlayback = !state.loopPlayback;
     render();
   });
 
@@ -639,9 +662,14 @@ function startPlayback(): void {
     return;
   }
   playbackHandle = window.setInterval(() => {
-    state.minutes += 1.5;
+    state.minutes += 1.5 * state.playbackRate;
     if (state.minutes > 600) {
-      state.minutes = 180;
+      if (state.loopPlayback) {
+        state.minutes = 180;
+      } else {
+        state.minutes = 600;
+        stopPlayback();
+      }
     }
     render();
   }, 110);
