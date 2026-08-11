@@ -1,0 +1,15 @@
+node_modules/
+.pnpm-store/
+
+dist/
+dist-web/
+
+outputs/
+work/
+
+*.log
+*.tmp
+*.temp
+
+.DS_Store
+Thumbs.db

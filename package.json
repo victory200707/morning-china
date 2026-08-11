@@ -1,0 +1,23 @@
+{
+  "name": "morning-light-china",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "build:test": "tsc",
+    "test": "tsc && node --test test/solar.test.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@svg-maps/china": "^2.0.0",
+    "astronomy-engine": "2.1.19",
+    "suncalc": "2.0.1"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2",
+    "vite": "^8.2.1"
+  }
+}
